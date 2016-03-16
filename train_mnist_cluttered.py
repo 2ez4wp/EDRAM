@@ -206,7 +206,8 @@ def main(name, epochs, batch_size, learning_rate, window_size, conv_sizes, num_f
     error_rate = MisclassificationRate().apply(y, p[-1])
     error_rate.name = 'error_rate'
     monitors = [cost, error_rate]
-
+	
+	plotting_extensions = []
     # Live plotting...
     if live_plotting:
         plot_channels = [
