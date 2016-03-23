@@ -306,7 +306,7 @@ if __name__ == "__main__":
     parser.add_argument("--bs", "--batch-size", type=int, dest="batch_size",
                         default=128, help="Size of each mini-batch")
     parser.add_argument("--lr", "--learning-rate", type=float, dest="learning_rate",
-                        default=1e-5, help="Learning rate")
+                        default=1e-4, help="Learning rate")
     parser.add_argument("--window_size", "-a", type=str,
                         default='26,26', help="Window size of attention mechanism (height,width)")
     parser.add_argument("--conv-sizes", type=int, nargs='+', dest="conv_sizes",
