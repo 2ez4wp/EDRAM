@@ -32,7 +32,7 @@ To train the model with a basic setup you need to run the script
 	cd edram
 	python train_mnist_cluttered.py
 	
-Usually it takes around 60 epoch to train the model. After training in the folder you can find
+Usually it takes around 60 epoch to train the model up to accuracy 1.24% of error. After training in the folder you can find
  
  * a pickle of the best model
  * a pickle of the log
