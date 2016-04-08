@@ -100,9 +100,17 @@ def main(name, epochs, batch_size, learning_rate, window_size, conv_sizes, num_f
     conv3 = Convolutional(filter_size=filter_size2, num_filters=num_filters, num_channels=int(num_filters / 2), image_size=(12, 12), border_mode='half',
                           name='conv3', **convinits)
     conv3_bn = SpatialBatchNormalization(input_dim=(128, 12, 12), conserve_memory=False, n_iter=n_iter, name='conv3_bn')
-    conv4 = Convolutional(filter_size=filter_size2, num_filters=num_filters, num_channels=num_filters, image_size=(12, 12), name='conv4', **convinits)
-    conv4_bn = SpatialBatchNormalization(input_dim=(128, 10, 10), conserve_memory=False, n_iter=n_iter, name='conv4_bn')
-    conv_mlp = MLP(activations=[Identity()], dims=[12800, fc_dim], name="MLP_conv", **inits)
+    conv4 = Convolutional(filter_size=filter_size2, num_filters=num_filters, num_channels=num_filters, image_size=(12, 12), border_mode='half', name='conv4',
+                          **convinits)
+    conv4_bn = SpatialBatchNormalization(input_dim=(128, 12, 12), conserve_memory=False, n_iter=n_iter, name='conv4_bn')
+    # Max Pooling
+    conv5 = Convolutional(filter_size=filter_size2, num_filters=160, num_channels=num_filters, image_size=(6, 6), border_mode='half', name='conv5',
+                          **convinits)
+    conv5_bn = SpatialBatchNormalization(input_dim=(160, 6, 6), conserve_memory=False, n_iter=n_iter, name='conv5_bn')
+    conv6 = Convolutional(filter_size=filter_size2, num_filters=192, num_channels=160, image_size=(6, 6), name='conv6', **convinits)
+    conv6_bn = SpatialBatchNormalization(input_dim=(192, 4, 4), conserve_memory=False, n_iter=n_iter, name='conv6_bn')
+
+    conv_mlp = MLP(activations=[Identity()], dims=[3072, fc_dim], name="MLP_conv", **inits)
     conv_mlp_bn = BatchNormalization(input_dim=fc_dim, conserve_memory=False, n_iter=n_iter, name='conv_mlp_bn')
     loc_mlp = MLP(activations=[Identity()], dims=[6, fc_dim], name="MLP_loc", **inits)
     loc_mlp_bn = BatchNormalization(input_dim=fc_dim, conserve_memory=False, n_iter=n_iter, name='loc_mlp_bn')
@@ -131,10 +139,11 @@ def main(name, epochs, batch_size, learning_rate, window_size, conv_sizes, num_f
 
     edram = EDRAM(channels=channels, out_height=w_height, out_width=w_width, n_iter=n_iter, num_classes=num_classes, rectifier=rectifier, conv1=conv1,
                   conv1_bn=conv1_bn, conv2=conv2, conv2_bn=conv2_bn, max_pooling=max_pooling, conv3=conv3, conv3_bn=conv3_bn, conv4=conv4, conv4_bn=conv4_bn,
-                  conv_mlp=conv_mlp, conv_mlp_bn=conv_mlp_bn, loc_mlp=loc_mlp, loc_mlp_bn=loc_mlp_bn, conv_init=conv_init, encoder_mlp=encoder_mlp,
-                  encoder_rnn=encoder_rnn, decoder_mlp=decoder_mlp, decoder_rnn=decoder_rnn, classification_mlp1=classification_mlp1,
-                  classification_mlp1_bn=classification_mlp1_bn, classification_mlp2=classification_mlp2, classification_mlp2_bn=classification_mlp2_bn,
-                  classification_mlp3=classification_mlp3, emit_mlp=emit_mlp)
+                  conv5=conv5, conv5_bn=conv5_bn, conv6=conv6, conv6_bn=conv6_bn, conv_mlp=conv_mlp, conv_mlp_bn=conv_mlp_bn,
+                  loc_mlp=loc_mlp, loc_mlp_bn=loc_mlp_bn, conv_init=conv_init, encoder_mlp=encoder_mlp, encoder_rnn=encoder_rnn, decoder_mlp=decoder_mlp,
+                  decoder_rnn=decoder_rnn, classification_mlp1=classification_mlp1, classification_mlp1_bn=classification_mlp1_bn,
+                  classification_mlp2=classification_mlp2, classification_mlp2_bn=classification_mlp2_bn, classification_mlp3=classification_mlp3,
+                  emit_mlp=emit_mlp)
     edram.initialize()
 
     # ------------------------------------------------------------------------
@@ -144,19 +153,17 @@ def main(name, epochs, batch_size, learning_rate, window_size, conv_sizes, num_f
     wr = T.fmatrix('locations')
 
     with batch_normalization(edram):
-        bn_p, bn_l, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn \
-            = edram.calculate_train(x, x_coarse)
+        bn_p, bn_l, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, m_c5_bn, s_c5_bn, m_c6_bn, s_c6_bn, \
+        m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn = edram.calculate_train(x, x_coarse)
 
     def compute_cost(p, wr, y, l):
-        cost_where = T.dot(T.sqr(wr - l), [2, 0.5, 2, 0.5, 2, 2])
+        cost_where = T.dot(T.sqr(wr - l), [1, 0.5, 1, 0.5, 1, 1])
         cost_y = T.stack([T.nnet.categorical_crossentropy(T.maximum(p[i, :], 1e-7), y) for i in range(0, n_iter)])
 
         return cost_where, cost_y
 
-    lambda0 = 10.0
-
     cost_where, cost_y = compute_cost(bn_p, wr, y, bn_l)
-    bn_cost = lambda0 * cost_y + cost_where
+    bn_cost = cost_y + cost_where
     bn_cost = bn_cost.sum(axis=0)
     bn_cost = bn_cost.mean()
     bn_cost.name = 'cost'
@@ -181,10 +188,12 @@ def main(name, epochs, batch_size, learning_rate, window_size, conv_sizes, num_f
 
     pop_updates = get_batch_normalization_updates(bn_cg)
     update_params = [conv1_bn.population_mean, conv1_bn.population_stdev, conv2_bn.population_mean, conv2_bn.population_stdev, conv3_bn.population_mean,
-                     conv3_bn.population_stdev, conv4_bn.population_mean, conv4_bn.population_stdev, conv_mlp_bn.population_mean, conv_mlp_bn.population_stdev,
+                     conv3_bn.population_stdev, conv4_bn.population_mean, conv4_bn.population_stdev, conv5_bn.population_mean, conv5_bn.population_stdev,
+                     conv6_bn.population_mean, conv6_bn.population_stdev, conv_mlp_bn.population_mean, conv_mlp_bn.population_stdev,
                      loc_mlp_bn.population_mean, loc_mlp_bn.population_stdev, classification_mlp1_bn.population_mean, classification_mlp1_bn.population_stdev,
                      classification_mlp2_bn.population_mean, classification_mlp2_bn.population_stdev]
-    update_values = [m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn]
+    update_values = [m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, m_c5_bn, s_c5_bn, m_c6_bn, s_c6_bn, m_c_bn, s_c_bn, m_l_bn, s_l_bn,
+                     m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn]
 
     pop_updates.extend([(p, m) for p, m in zip(update_params, update_values)])
 
@@ -197,7 +206,7 @@ def main(name, epochs, batch_size, learning_rate, window_size, conv_sizes, num_f
 
     p, l = edram.calculate_test(x, x_coarse)
     cost_where, cost_y = compute_cost(p, wr, y, l)
-    cost = lambda0 * cost_y + cost_where
+    cost = cost_y + cost_where
     cost = cost.sum(axis=0)
     cost = cost.mean()
     cost.name = 'cost'
@@ -259,6 +268,12 @@ def main(name, epochs, batch_size, learning_rate, window_size, conv_sizes, num_f
             main_loop.model.get_top_bricks()[0].conv4_bn.population_mean.set_value(oldmodel.get_top_bricks()[0].conv4_bn.population_mean.get_value())
             main_loop.model.get_top_bricks()[0].conv4_bn.population_stdev.set_value(oldmodel.get_top_bricks()[0].conv4_bn.population_stdev.get_value())
 
+            main_loop.model.get_top_bricks()[0].conv5_bn.population_mean.set_value(oldmodel.get_top_bricks()[0].conv5_bn.population_mean.get_value())
+            main_loop.model.get_top_bricks()[0].conv5_bn.population_stdev.set_value(oldmodel.get_top_bricks()[0].conv5_bn.population_stdev.get_value())
+
+            main_loop.model.get_top_bricks()[0].conv6_bn.population_mean.set_value(oldmodel.get_top_bricks()[0].conv6_bn.population_mean.get_value())
+            main_loop.model.get_top_bricks()[0].conv6_bn.population_stdev.set_value(oldmodel.get_top_bricks()[0].conv6_bn.population_stdev.get_value())
+
             main_loop.model.get_top_bricks()[0].loc_mlp_bn.population_mean.set_value(oldmodel.get_top_bricks()[0].loc_mlp_bn.population_mean.get_value())
             main_loop.model.get_top_bricks()[0].loc_mlp_bn.population_stdev.set_value(oldmodel.get_top_bricks()[0].loc_mlp_bn.population_stdev.get_value())
 
@@ -300,7 +315,7 @@ if __name__ == "__main__":
     parser.add_argument("--live-plotting", "--plot", action="store_true",
                         default=True, help="Activate live-plotting to a bokeh-server")
     parser.add_argument("--name", type=str, dest="name",
-                        default='MNIST_cluttered_adam_2fc_new_bn', help="Name for this experiment")
+                        default='MNIST_cluttered', help="Name for this experiment")
     parser.add_argument("--epochs", type=int, dest="epochs",
                         default=200, help="Number of training epochs to do")
     parser.add_argument("--bs", "--batch-size", type=int, dest="batch_size",

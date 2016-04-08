@@ -8,8 +8,8 @@ from blocks.bricks.recurrent import BaseRecurrent, recurrent
 
 class EDRAM(BaseRecurrent, Initializable):
     def __init__(self, channels, out_height, out_width, n_iter, num_classes, rectifier, conv1, conv1_bn, conv2, conv2_bn, max_pooling, conv3, conv3_bn, conv4,
-                 conv4_bn, conv_mlp, conv_mlp_bn, conv_init, loc_mlp, loc_mlp_bn, encoder_mlp, encoder_rnn, decoder_mlp, decoder_rnn, classification_mlp1,
-                 classification_mlp1_bn, classification_mlp2, classification_mlp2_bn, classification_mlp3, emit_mlp,
+                 conv4_bn, conv5, conv5_bn, conv6, conv6_bn, conv_mlp, conv_mlp_bn, conv_init, loc_mlp, loc_mlp_bn, encoder_mlp, encoder_rnn, decoder_mlp,
+                 decoder_rnn, classification_mlp1, classification_mlp1_bn, classification_mlp2, classification_mlp2_bn, classification_mlp3, emit_mlp,
                  **kwargs):
         super(EDRAM, self).__init__(**kwargs)
 
@@ -28,6 +28,10 @@ class EDRAM(BaseRecurrent, Initializable):
         self.conv3_bn = conv3_bn
         self.conv4 = conv4
         self.conv4_bn = conv4_bn
+        self.conv5 = conv5
+        self.conv5_bn = conv5_bn
+        self.conv6 = conv6
+        self.conv6_bn = conv6_bn
         self.conv_mlp = conv_mlp
         self.conv_mlp_bn = conv_mlp_bn
         self.loc_mlp = loc_mlp
@@ -45,9 +49,9 @@ class EDRAM(BaseRecurrent, Initializable):
         self.emit_mlp = emit_mlp
 
         self.children = [self.rectifier, self.conv1, self.conv1_bn, self.conv2, self.conv2_bn, self.max_pooling, self.conv3, self.conv3_bn, self.conv4,
-                         self.conv4_bn, self.conv_mlp, self.conv_mlp_bn, self.loc_mlp, self.loc_mlp_bn, self.encoder_mlp, self.encoder_rnn, self.decoder_mlp,
-                         self.decoder_rnn, self.conv_init, self.classification_mlp1, self.classification_mlp1_bn, self.classification_mlp2,
-                         self.classification_mlp2_bn, self.classification_mlp3, self.emit_mlp]
+                         self.conv4_bn, self.conv5, self.conv5_bn, self.conv6, self.conv6_bn, self.conv_mlp, self.conv_mlp_bn, self.loc_mlp, self.loc_mlp_bn,
+                         self.encoder_mlp, self.encoder_rnn, self.decoder_mlp, self.decoder_rnn, self.conv_init, self.classification_mlp1,
+                         self.classification_mlp1_bn, self.classification_mlp2, self.classification_mlp2_bn, self.classification_mlp3, self.emit_mlp]
 
     def get_dim(self, name):
         if name == 'h_enc':
@@ -64,6 +68,8 @@ class EDRAM(BaseRecurrent, Initializable):
             return 6
         elif name == 'r':
             return self.channels * self.out_height * self.out_width
+        elif name == 'i':
+            return 1
         else:
             super(EDRAM, self).get_dim(name)
 
@@ -72,36 +78,47 @@ class EDRAM(BaseRecurrent, Initializable):
         l = T.stack((T.clip(l[:, 0], .0, 1.0), l[:, 1], l[:, 2], l[:, 3], T.clip(l[:, 4], .0, 1.0), l[:, 5]), axis=1)
         return l
 
-    @recurrent(sequences=[], contexts=['x', 'x_coarse', 'n_steps', 'batch_size'], states=['l_cost', 'l', 'h_enc', 'c_enc', 'h_dec', 'c_dec'],
-               outputs=['p', 'l_cost', 'l', 'r', 'h_enc', 'c_enc', 'h_dec', 'c_dec', 'm_c1_bn', 's_c1_bn', 'm_c2_bn', 's_c2_bn', 'm_c3_bn', 's_c3_bn',
-                        'm_c4_bn', 's_c4_bn', 'm_c_bn', 's_c_bn', 'm_l_bn', 's_l_bn', 'm_cl1_bn', 's_cl1_bn', 'm_cl2_bn', 's_cl2_bn'])
-    def apply(self, l_cost, l, h_enc, c_enc, h_dec, c_dec, x, x_coarse, n_steps, batch_size):
+    @recurrent(sequences=[], contexts=['x', 'x_coarse', 'n_steps', 'batch_size'], states=['l_cost', 'l', 'h_enc', 'c_enc', 'h_dec', 'c_dec', 'i'],
+               outputs=['p', 'l_cost', 'l', 'r', 'h_enc', 'c_enc', 'h_dec', 'c_dec', 'i', 'm_c1_bn', 's_c1_bn', 'm_c2_bn', 's_c2_bn', 'm_c3_bn', 's_c3_bn',
+                        'm_c4_bn', 's_c4_bn', 'm_c5_bn', 's_c5_bn', 'm_c6_bn', 's_c6_bn', 'm_c_bn', 's_c_bn', 'm_l_bn', 's_l_bn', 'm_cl1_bn', 's_cl1_bn',
+                        'm_cl2_bn', 's_cl2_bn'])
+    def apply(self, l_cost, l, h_enc, c_enc, h_dec, c_dec, i, x, x_coarse, n_steps, batch_size):
         r = self.transform(l, x)
 
         c1 = self.conv1.apply(r)
-        c1_bn = self.conv1_bn.apply(c1)
+        c1_bn = self.conv1_bn.apply(c1, i[0])
         c1_activation = self.rectifier.apply(c1_bn)
 
         c2 = self.conv2.apply(c1_activation)
-        c2_bn = self.conv2_bn.apply(c2)
+        c2_bn = self.conv2_bn.apply(c2, i[0])
         c2_activation = self.rectifier.apply(c2_bn)
 
-        pool = self.max_pooling.apply(c2_activation)
+        pool1 = self.max_pooling.apply(c2_activation)
 
-        c3 = self.conv3.apply(pool)
-        c3_bn = self.conv3_bn.apply(c3)
+        c3 = self.conv3.apply(pool1)
+        c3_bn = self.conv3_bn.apply(c3, i[0])
         c3_activation = self.rectifier.apply(c3_bn)
 
         c4 = self.conv4.apply(c3_activation)
-        c4_bn = self.conv4_bn.apply(c4)
+        c4_bn = self.conv4_bn.apply(c4, i[0])
         c4_activation = self.rectifier.apply(c4_bn)
 
-        g_image = self.conv_mlp.apply(c4_activation.flatten(ndim=2))
-        g_image_bn = self.conv_mlp_bn.apply(g_image)
+        pool2 = self.max_pooling.apply(c4_activation)
+
+        c5 = self.conv5.apply(pool2)
+        c5_bn = self.conv5_bn.apply(c5, i[0])
+        c5_activation = self.rectifier.apply(c5_bn)
+
+        c6 = self.conv6.apply(c5_activation)
+        c6_bn = self.conv6_bn.apply(c6, i[0])
+        c6_activation = self.rectifier.apply(c6_bn)
+
+        g_image = self.conv_mlp.apply(c6_activation.flatten(ndim=2))
+        g_image_bn = self.conv_mlp_bn.apply(g_image, i[0])
         g_image_activation = self.rectifier.apply(g_image_bn)
 
         g_loc = self.loc_mlp.apply(l)
-        g_loc_bn = self.loc_mlp_bn.apply(g_loc)
+        g_loc_bn = self.loc_mlp_bn.apply(g_loc, i[0])
         g_loc_activation = self.rectifier.apply(g_loc_bn)
 
         g = g_image_activation * g_loc_activation
@@ -110,11 +127,11 @@ class EDRAM(BaseRecurrent, Initializable):
         h_enc, c_enc = self.encoder_rnn.apply(states=h_enc, cells=c_enc, inputs=i_enc, iterate=False)
 
         cl1 = self.classification_mlp1.apply(h_enc)
-        cl1_bn = self.classification_mlp1_bn.apply(cl1)
+        cl1_bn = self.classification_mlp1_bn.apply(cl1, i[0])
         cl1_activation = self.rectifier.apply(cl1_bn)
 
         cl2 = self.classification_mlp2.apply(cl1_activation)
-        cl2_bn = self.classification_mlp1_bn.apply(cl2)
+        cl2_bn = self.classification_mlp2_bn.apply(cl2, i[0])
         cl2_activation = self.rectifier.apply(cl2_bn)
 
         p = self.classification_mlp3.apply(cl2_activation)
@@ -128,38 +145,42 @@ class EDRAM(BaseRecurrent, Initializable):
         m_c2_bn, s_c2_bn = self.get_metadata(c2_bn)
         m_c3_bn, s_c3_bn = self.get_metadata(c3_bn)
         m_c4_bn, s_c4_bn = self.get_metadata(c4_bn)
+        m_c5_bn, s_c5_bn = self.get_metadata(c5_bn)
+        m_c6_bn, s_c6_bn = self.get_metadata(c6_bn)
         m_c_bn, s_c_bn = self.get_metadata(g_image_bn)
         m_l_bn, s_l_bn = self.get_metadata(g_loc_bn)
         m_cl1_bn, s_cl1_bn = self.get_metadata(cl1_bn)
         m_cl2_bn, s_cl2_bn = self.get_metadata(cl2_bn)
 
-        return p, l, l_next, r, h_enc, c_enc, h_dec, c_dec, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, \
-               m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn
+        return p, l, l_next, r, h_enc, c_enc, h_dec, c_dec, i + 1, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, \
+               m_c5_bn, s_c5_bn, m_c6_bn, s_c6_bn, m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn
 
     def get_metadata(self, var):
         app_call = get_application_call(var)
         return app_call.metadata['offset'], get_application_call(var).metadata['divisor']
 
-    @application(inputs=['features', 'features_coarse'], outputs=['p', 'l', 'm_c1_bn', 's_c1_bn', 'm_c2_bn', 's_c2_bn', 'm_c3_bn', 's_c3_bn',
-                                                                  'm_c4_bn', 's_c4_bn', 'm_c_bn', 's_c_bn', 'm_l_bn', 's_l_bn', 'm_cl1_bn',
-                                                                  's_cl1_bn', 'm_cl2_bn', 's_cl2_bn'])
+    @application(inputs=['features', 'features_coarse'],
+                 outputs=['p', 'l', 'm_c1_bn', 's_c1_bn', 'm_c2_bn', 's_c2_bn', 'm_c3_bn', 's_c3_bn', 'm_c4_bn', 's_c4_bn', 'm_c5_bn', 's_c5_bn', 'm_c6_bn',
+                          's_c6_bn', 'm_c_bn', 's_c_bn', 'm_l_bn', 's_l_bn', 'm_cl1_bn', 's_cl1_bn', 'm_cl2_bn', 's_cl2_bn'])
     def calculate_train(self, features, features_coarse):
         batch_size = features.shape[0]
 
-        p, l_cost, l, r, h_enc, c_enc, h_dec, c_dec, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, \
-        m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn = self.apply(x=features, x_coarse=features_coarse, n_steps=self.n_iter,
-                                                                                            batch_size=batch_size)
+        p, l_cost, l, r, h_enc, c_enc, h_dec, c_dec, _, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, \
+        m_c5_bn, s_c5_bn, m_c6_bn, s_c6_bn, m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn = self.apply(x=features,
+                                                                                                                                x_coarse=features_coarse,
+                                                                                                                                n_steps=self.n_iter,
+                                                                                                                                batch_size=batch_size)
 
-        return p, l_cost, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, \
-               s_cl2_bn
+        return p, l_cost, m_c1_bn, s_c1_bn, m_c2_bn, s_c2_bn, m_c3_bn, s_c3_bn, m_c4_bn, s_c4_bn, m_c5_bn, s_c5_bn, m_c6_bn, s_c6_bn, \
+               m_c_bn, s_c_bn, m_l_bn, s_l_bn, m_cl1_bn, s_cl1_bn, m_cl2_bn, s_cl2_bn
 
     @application(inputs=['features', 'features_coarse'], outputs=['p', 'l'])
     def calculate_test(self, features, features_coarse):
         batch_size = features.shape[0]
 
-        p, l_cost, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = self.apply(x=features, x_coarse=features_coarse,
-                                                                                                 n_steps=self.n_iter,
-                                                                                                 batch_size=batch_size)
+        p, l_cost, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = self.apply(x=features, x_coarse=features_coarse,
+                                                                                                                n_steps=self.n_iter,
+                                                                                                                batch_size=batch_size)
         return p, l_cost
 
     @application
@@ -167,7 +188,7 @@ class EDRAM(BaseRecurrent, Initializable):
         result = []
         x = kwargs['x_coarse']
         c = self.conv_init.apply(x)
-        h_dec_init = c.reshape((batch_size, -1))
+        h_dec_init = c.flatten(ndim=2)
         l_init = self.emmit_location(h_dec_init)
 
         for state in self.apply.states:
@@ -176,6 +197,8 @@ class EDRAM(BaseRecurrent, Initializable):
                 result.append(h_dec_init)
             elif state == 'l':
                 result.append(l_init)
+            elif state == 'i':
+                result.append(T.zeros(dim, dtype='int16'))
             else:
                 if dim == 0:
                     result.append(T.zeros((batch_size,)))
