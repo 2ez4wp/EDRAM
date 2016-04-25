@@ -335,7 +335,7 @@ if __name__ == "__main__":
     parser.add_argument("--dec-dim", type=int, dest="dec_dim",
                         default=512, help="Decoder  RNN state dimension")
     parser.add_argument("--step", type=int, dest="step",
-                        default=10, help="Step size for digit recognition")
+                        default=8, help="Step size for digit recognition")
     parser.add_argument("--num-digits", type=int, dest="num_digits",
                         default=1, help="Number of digits in the sequence")
     parser.add_argument("--num-classes", type=int, dest="num_classes",
