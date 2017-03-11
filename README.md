@@ -1,7 +1,7 @@
 # EDRAM
 Enriched Deep Recurrent Visual Attention Model
 -----------------------------------------------
-The repository contains implementation of Enriched Deep Recurrent Visual Attention Model for MNIST Cluttered (https://github.com/deepmind/mnist-cluttered). The original paper in proceeding to the conference.
+The repository contains implementation of Enriched Deep Recurrent Visual Attention Model for MNIST Cluttered (https://github.com/deepmind/mnist-cluttered). The original paper in proceeding to the [WACV 2017](http://pamitc.org/wacv2017) conference.
 
 
 Dependencies
